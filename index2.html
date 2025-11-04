@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SCORE – Assistant contrat (pas à pas)</title>
+<style>
+  :root{--teal:#00a6a6;--ink:#0f172a;--muted:#64748b;--bg:#f7fafc;--card:#fff;--ok:#16a34a;--err:#dc2626}
+  body{margin:0;font-family:Inter,Roboto,system-ui,Arial}
+  /* FAB */
+  .fab{position:fixed;right:16px;bottom:16px;background:var(--teal);color:#fff;border:none;border-radius:999px;padding:12px 16px;box-shadow:0 8px 20px rgba(0,0,0,.2);cursor:pointer;z-index:9998}
+  /* Panel */
+  #panel{position:fixed;top:0;right:0;height:100vh;width:420px;max-width:96vw;background:var(--bg);border-left:3px solid var(--teal);
+         box-shadow:-10px 0 24px rgba(0,0,0,.18);display:flex;flex-direction:column;z-index:9999;transform:translateX(110%);transition:.25s}
+  #panel.open{transform:translateX(0)}
+  header{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--teal);color:#fff}
+  header h3{margin:0;font-weight:600}
+  header .close{margin-left:auto;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer}
+  .progress{height:4px;background:#ffffff33;border-radius:4px;overflow:hidden}
+  .bar{height:4px;background:#fff;width:0%}
+  /* Chat */
+  #chat{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:85%;padding:10px 12px;border-radius:14px;line-height:1.35;font-size:14px;white-space:pre-wrap}
+  .a{align-self:flex-start;background:#fff;border:1px solid #e5e7eb}
+  .u{align-self:flex-end;background:#dcfce7;border:1px solid #bbf7d0}
+  .meta{font-size:11px;color:var(--muted);margin-top:-6px;padding:0 4px}
+  /* Composer */
+  #composer{padding:10px;border-top:1px solid #e5e7eb;background:#fff;display:grid;grid-template-columns:1fr auto;gap:8px}
+  #input{border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:14px}
+  .send{background:var(--teal);color:#fff;border:none;border-radius:10px;padding:10px 12px;cursor:pointer}
+  /* Quick replies */
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}
+  .chip.ok{background:#ecfdf5;border-color:#a7f3d0}
+  /* Summary card */
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:6px;font-size:13px}
+  .k{color:#334155}
+  .status-ok{color:var(--ok);font-size:12px}
+  .status-err{color:var(--err);font-size:12px}
+</style>
+</head>
+<body>
+
+<button class="fab" id="fab">🤖 Assistant</button>
+
+<aside id="panel" aria-label="Assistant contrat">
+  <header>
+    <span>🤖</span><h3>Assistant contrat</h3>
+    <button class="close" id="close">✕</button>
+  </header>
+  <div class="progress"><div class="bar" id="bar"></div></div>
+
+  <div id="chat" role="log" aria-live="polite"></div>
+
+  <div id="composer">
+    <input id="input" placeholder="Écris ici… (Entrée = envoyer)"/>
+    <button class="send" id="send">Envoyer</button>
+  </div>
+</aside>
+
+<script>
+/* ===== Config ===== */
+const TYPES=["PBH","Time & Material","Full Support","On Condition","Exchange","Inspection"];
+const ENGINES=["LEAP-1A","LEAP-1B","CFM56-5B","CFM56-7B","CFM56-3","CF6-80E1"];
+const CLIENTS=["Air France","Transavia France","easyJet","Ryanair","KLM","Lufthansa","Safran Test Fleet"];
+
+/* ===== Utilities ===== */
+const $=s=>document.querySelector(s);
+const chat=$("#chat"), input=$("#input"), bar=$("#bar");
+const now=()=>new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+const scrollBottom=()=>chat.scrollTop=chat.scrollHeight;
+
+function say(text,{role="a"}={}){ // assistant bubble
+  const m=document.createElement("div"); m.className=`msg ${role==="a"?"a":"u"}`; m.textContent=text; chat.appendChild(m);
+  const meta=document.createElement("div"); meta.className="meta"; meta.textContent=now(); chat.appendChild(meta);
+  scrollBottom(); return m;
+}
+function chips(options){ // quick replies container
+  const wrap=document.createElement("div"); wrap.className="chips";
+  options.forEach(o=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=o.label;
+    b.onclick=()=>o.onClick?.(o.value ?? o.label, b);
+    wrap.appendChild(b);
+  });
+  chat.appendChild(wrap); scrollBottom(); return wrap;
+}
+function user(text){ say(text,{role:"u"}); }
+function percent(n){ bar.style.width=`${n}%`; }
+
+/* ===== Simple parsers & validators ===== */
+const parseFromFree=(t)=>{
+  const pick=(list)=>list.find(x=>new RegExp("\\b"+x.replace(/[-/]/g,"[-/]")+"\\b","i").test(t))||"";
+  const type=pick(TYPES);
+  const engine=pick(ENGINES);
+  const client=CLIENTS.find(c=>new RegExp("\\b"+c.replace(" ","\\s")+"\\b","i").test(t)) || (t.match(/client\s+([A-Za-z][\w\s\-']{1,40})/i)?.[1]?.trim()||"");
+  const id=(t.match(/CFM[-–]?\s?2025[-–]?\s?[A-Z0-9]{5}/i)?.[0]||"").replace(/\s/g,"").replace(/–/g,"-").toUpperCase();
+  const ref=(t.match(/\b([1-9])[-–](\d{4})\b/)?.[0]||"").replace(/–/g,"-");
+  return {type,engine,client,id,ref};
+};
+const genId=()=> "CFM-2025-"+Array.from({length:5},()=> "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random()*32)]).join("");
+const genRef=()=> `${Math.floor(Math.random()*9)+1}-${String(Math.floor(Math.random()*10000)).padStart(4,"0")}`;
+const isId=v=>/^CFM-2025-[A-Z0-9]{5}$/.test(v||"");
+const isRef=v=>/^[1-9]-\d{4}$/.test(v||"");
+
+/* ===== Conversation state machine ===== */
+const state={ type:"", engine:"", client:"", id:"", ref:"" };
+const steps=[
+  { key:"intro", run: stepIntro },
+  { key:"type",  run: stepType },
+  { key:"engine",run: stepEngine },
+  { key:"client",run: stepClient },
+  { key:"id",    run: stepId },
+  { key:"ref",   run: stepRef },
+  { key:"review",run: stepReview },
+  { key:"confirm",run: stepConfirm }
+];
+let i=0, awaiting=null; // awaiting = {field, validator, onValue}
+
+/* === Steps === */
+function stepIntro(){
+  percent(5);
+  say("Bienvenue ! On crée un contrat en 6 petites étapes. Tu peux aussi coller une phrase complète (ex: “type PBH sur LEAP-1A…”) puis j’en déduis tout. 🚀");
+  chips([
+    {label:"Coller une phrase", onClick:()=>{input.focus();}},
+    {label:"Commencer directement ▶️", onClick:next}
+  ]);
+}
+
+function stepType(){
+  percent(20);
+  const m=say("Quel **type de contrat** ? (clic ou écris)");
+  const c=chips([...TYPES.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('type',val); next();}})),
+                 {label:"Autre…", onClick:()=>askFree('type', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"type");
+}
+
+function stepEngine(){
+  percent(35);
+  const m=say("Sur quel **moteur** ?");
+  const c=chips([...ENGINES.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('engine',val); next();}})),
+                 {label:"Autre…", onClick:()=>askFree('engine', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"engine");
+}
+
+function stepClient(){
+  percent(50);
+  const m=say("Pour quel **client** ?");
+  const c=chips([...CLIENTS.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('client',val); next();}})),
+                 {label:"Saisir le nom…", onClick:()=>askFree('client', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"client");
+}
+
+function stepId(){
+  percent(65);
+  const msg=say("Donne l’**identifiant Contratèque** (format `CFM-2025-ABCDE`).");
+  chips([
+    {label:"Auto-générer 🔁", onClick:()=>{setField('id',genId()); say("Proposition : "+state.id); next();}},
+    {label:"Coller depuis presse-papier", onClick:()=>askFree('id', isId)}
+  ]);
+  prefillFromFreeText(msg,null,"id", isId);
+}
+
+function stepRef(){
+  percent(80);
+  const msg=say("Indique la **référence contrat** (format `Z-ZZZZ`, Z=chiffre 1–9).");
+  chips([
+    {label:"Générer 🔁", onClick:()=>{setField('ref',genRef()); say("Proposition : "+state.ref); next();}},
+    {label:"Saisir manuellement", onClick:()=>askFree('ref', isRef)}
+  ]);
+  prefillFromFreeText(msg,null,"ref", isRef);
+}
+
+function stepReview(){
+  percent(92);
+  say("Voici le récapitulatif. Tu peux **éditer** une ligne en cliquant dessus :");
+  const card=document.createElement("div"); card.className="card";
+  const kv=document.createElement("div"); kv.className="kv";
+  const rows=[
+    ["Type", "type"],["Moteur","engine"],["Client","client"],
+    ["Contratèque","id"],["Référence","ref"]
+  ];
+  rows.forEach(([k,f])=>{
+    const K=document.createElement("div"); K.className="k"; K.textContent=k;
+    const V=document.createElement("div"); V.textContent=state[f]||"—";
+    V.style.cursor="pointer"; V.title="Modifier";
+    V.onclick=()=>{ i=steps.findIndex(s=>s.key=== (f==="type"?"type": f==="engine"?"engine": f==="client"?"client": f==="id"?"id":"ref")); next(true);}
+    kv.appendChild(K); kv.appendChild(V);
+  });
+  card.appendChild(kv); chat.appendChild(card); scrollBottom();
+
+  const ok=isId(state.id)&&isRef(state.ref)&&state.type&&state.engine&&state.client;
+  say(ok?"Tout est valide ✅":"Quelques champs sont à corriger ❗", {role:"a"})
+    .className += ok? " status-ok":" status-err";
+
+  chips([
+    {label:"Valider ✅", onClick:()=>{ if(ok) next(); else say("Corrige les champs signalés puis revalide."); }},
+    {label:"Recommencer ↺", onClick:reset}
+  ]);
+}
+
+function stepConfirm(){
+  percent(100);
+  const payload={
+    date:new Date().toISOString().slice(0,10),
+    client:state.client, contractType:state.type, engine:state.engine,
+    contratequeId:state.id, contractRef:state.ref, source:"assistant-ia-stepper"
+  };
+  say("Dernière étape : **créer le contrat ?**");
+  const p=document.createElement("pre"); p.textContent=JSON.stringify(payload,null,2); p.className="card"; chat.appendChild(p); scrollBottom();
+  chips([
+    {label:"Créer maintenant ✅", onClick:()=>{ console.log("CREATE_CONTRACT",payload); say("Contrat créé (simulation). ✅"); }},
+    {label:"Copier le JSON 📋", onClick:async()=>{ await navigator.clipboard.writeText(JSON.stringify(payload,null,2)); say("Copié !"); }},
+    {label:"Terminer", onClick:()=>say("À bientôt 👋")}
+  ]);
+}
+
+/* === Helpers for steps === */
+function pickChip(btn){ document.querySelectorAll('.chip').forEach(b=>b.classList.remove('ok')); btn.classList.add('ok'); }
+function setField(f,v){ state[f]=v; }
+function askFree(field, validator=(v)=>!!v){
+  awaiting={field, validator, onValue:(v)=>{ setField(field,v); next(); }};
+  say(`Ok, tape la valeur pour **${label(field)}** :`);
+  input.focus();
+}
+function label(f){
+  return {type:"type de contrat", engine:"moteur", client:"client", id:"identifiant Contratèque", ref:"référence"}[f]||f;
+}
+function prefillFromFreeText(anchor,chipWrap,field,validator){
+  // If user pasted a big sentence, try to pre-extract
+  const parsed=parseFromFree(input.value||"");
+  if(parsed[field] && (!validator || validator(parsed[field]))){
+    setField(field, parsed[field]);
+    const msg=`J’ai détecté **${label(field)}** = ${parsed[field]}.`;
+    say(msg);
+  }
+  // Autofill chips selection state
+  if(chipWrap){
+    [...chipWrap.children].forEach(b=>{
+      if(b.textContent===state[field]) b.classList.add('ok');
+    });
+  }
+}
+
+/* === Engine === */
+function next(replayCurrent=false){
+  if(!replayCurrent) i=Math.min(i+1, steps.length-1);
+  chat.appendChild(document.createElement("hr")).style.border="none"; // visual spacer
+  steps[i].run();
+}
+function reset(){
+  Object.keys(state).forEach(k=>state[k]="");
+  i=0; chat.innerHTML=""; percent(0); steps[0].run();
+}
+
+/* === IO === */
+$("#fab").onclick=()=>{$("#panel").classList.add("open"); if(chat.childElementCount===0) steps[0].run();}
+$("#close").onclick=()=>$("#panel").classList.remove("open");
+$("#send").onclick=sendText;
+input.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); sendText(); }});
+
+function sendText(){
+  const txt=input.value.trim(); if(!txt) return;
+  user(txt); input.value="";
+  // If we are awaiting a specific value
+  if(awaiting){
+    const {field,validator,onValue}=awaiting;
+    if(!validator(txt)){ say(`Format invalide pour **${label(field)}**. Réessaie ✍️`); return; }
+    awaiting=null; onValue(txt);
+    return;
+  }
+  // Otherwise treat as free form parsing & prefill
+  const parsed=parseFromFree(txt);
+  let filled=[];
+  Object.entries(parsed).forEach(([k,v])=>{ if(v && (!state[k] || (k==="id"&&isId(v)) || (k==="ref"&&isRef(v)))){ state[k]=v; filled.push(k); }});
+  if(filled.length){
+    say("Parfait, j’ai pré-rempli : "+filled.map(label).join(", ")+" ✅");
+  }else{
+    say("Message noté. Tu peux continuer avec les boutons ci-dessous 😊");
+  }
+}
+
+/* Boot */
+reset();
+</script>
+</body>
+</html>
