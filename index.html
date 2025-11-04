@@ -26,6 +26,16 @@
   textarea,input{width:100%;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:14px;background:#fff}
   .row{display:grid;grid-template-columns:1fr;gap:8px}
   .label{font-size:12px;color:#334155;font-weight:600;display:flex;align-items:center;gap:6px}
+  .chatcard{display:flex;flex-direction:column;gap:10px}
+  .chatbox{border:1px solid #e2e8f0;border-radius:12px;background:#fff;min-height:160px;max-height:220px;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+  .msg{display:flex;gap:8px}
+  .msg.assistant{justify-content:flex-start}
+  .msg.user{justify-content:flex-end}
+  .bubble{max-width:80%;padding:8px 10px;border-radius:12px;font-size:13px;line-height:1.4;box-shadow:0 3px 8px rgba(15,23,42,0.08)}
+  .msg.assistant .bubble{background:rgba(0,166,166,0.12);color:var(--ink);border-top-left-radius:4px}
+  .msg.user .bubble{background:var(--teal);color:#fff;border-top-right-radius:4px}
+  .chat-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .chat-actions .btn{flex:1 1 auto}
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}
   .chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
@@ -50,6 +60,18 @@
   </header>
 
   <main>
+    <!-- 0) Conversation guidée -->
+    <section class="card chatcard">
+      <div class="label">💬 Conversation guidée</div>
+      <div id="chat" class="chatbox" aria-live="polite"></div>
+      <div class="chat-actions">
+        <input id="chatInput" placeholder="Tape ta réponse et appuie sur Entrée" autocomplete="off"/>
+        <button class="btn" id="chatSend">Envoyer</button>
+        <button class="btn ghost" id="chatStart">🔁 Recommencer</button>
+      </div>
+      <div class="hint">Utilise la conversation pour te laisser guider pas à pas. Tu peux répondre « auto » pour générer automatiquement les identifiants.</div>
+    </section>
+
     <!-- 1) Commande naturelle + parsing -->
     <section class="row">
       <div class="label">🗣️ Commande en langage naturel</div>
@@ -119,6 +141,10 @@ const el = {
   panel: qs("#assistant"),
   fab: qs("#toggleFab"),
   close: qs("#closeBtn"),
+  chat: qs("#chat"),
+  chatInput: qs("#chatInput"),
+  chatSend: qs("#chatSend"),
+  chatStart: qs("#chatStart"),
   nl: qs("#nl"),
   chipsType: qs("#chipsType"),
   chipsMoteur: qs("#chipsMoteur"),
@@ -138,6 +164,7 @@ const el = {
 };
 /* ---------------- State ---------------- */
 const state = { type:"", moteur:"", client:"", id:"", ref:"" };
+const convo = { active:false, stepIndex:-1 };
 /* ---------------- Chips builders ---------------- */
 function buildChips(container, values, onPick){
   container.innerHTML="";
@@ -170,6 +197,12 @@ function genRef(){
   const z = Math.floor(Math.random()*9)+1; // 1..9
   const n = String(Math.floor(Math.random()*10000)).padStart(4,"0");
   return `${z}-${n}`;
+}
+function matchList(answer,list){
+  if(!answer) return "";
+  const clean = answer.trim();
+  const found = list.find(item=>new RegExp(`(^|\b)${item.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s/g,"\\s+")}(\b|$)`,`i`).test(clean));
+  return found || "";
 }
 /* ---------------- Validators ---------------- */
 function validateId(v){ return /^CFM-2025-[A-Z0-9]{5}$/.test(v); }
@@ -206,9 +239,173 @@ function refresh(){
   };
   el.preview.textContent = JSON.stringify(payload,null,2);
 }
+function pushMessage(sender,text){
+  const wrapper=document.createElement("div");
+  wrapper.className=`msg ${sender}`;
+  const bubble=document.createElement("div");
+  bubble.className="bubble";
+  bubble.textContent=text;
+  wrapper.appendChild(bubble);
+  el.chat.appendChild(wrapper);
+  el.chat.scrollTop=el.chat.scrollHeight;
+}
+
+const steps=[
+  {
+    key:"type",
+    question:"Quel est le type de contrat souhaité ? (PBH, Time & Material, ...)",
+    handle(answer){
+      const pick=matchList(answer,TYPES);
+      if(!pick){
+        pushMessage("assistant","Je n’ai pas reconnu le type. Choisis parmi : "+TYPES.join(", ")+".");
+        return false;
+      }
+      state.type=pick;
+      pushMessage("assistant",`Parfait, on part sur ${pick}.`);
+      return true;
+    }
+  },
+  {
+    key:"moteur",
+    question:"Quel moteur est concerné ? (LEAP-1A, CFM56-7B, ...)",
+    handle(answer){
+      const pick=matchList(answer,MOTEURS);
+      if(!pick){
+        pushMessage("assistant","Je n’ai pas reconnu le moteur. Options : "+MOTEURS.join(", ")+".");
+        return false;
+      }
+      state.moteur=pick;
+      pushMessage("assistant",`Compris, moteur ${pick}.`);
+      return true;
+    }
+  },
+  {
+    key:"client",
+    question:"Quel est le client ?",
+    handle(answer){
+      const pick=matchList(answer,CLIENTS) || answer.trim();
+      if(!pick){
+        pushMessage("assistant","Peux-tu préciser le client ?");
+        return false;
+      }
+      state.client=pick;
+      el.client.value=pick;
+      pushMessage("assistant",`Merci ! Client enregistré : ${pick}.`);
+      return true;
+    }
+  },
+  {
+    key:"id",
+    question:"Indique l’identifiant Contratèque (format CFM-2025-XXXXX) ou réponds « auto ».",
+    handle(answer){
+      const clean=answer.trim();
+      if(/auto/i.test(clean)){
+        const v=genCFM();
+        state.id=v;
+        el.id.value=v;
+        pushMessage("assistant",`C’est fait, j’ai généré ${v}.`);
+        return true;
+      }
+      const value=clean.toUpperCase().replace(/–/g,"-");
+      if(!validateId(value)){
+        pushMessage("assistant","Le format attendu est CFM-2025-XXXXX. Tu peux aussi écrire « auto »." );
+        return false;
+      }
+      state.id=value;
+      el.id.value=value;
+      pushMessage("assistant",`Identifiant ${value} noté.`);
+      return true;
+    }
+  },
+  {
+    key:"ref",
+    question:"Quelle est la référence contrat (format Z-ZZZZ) ou réponds « auto » ?",
+    handle(answer){
+      const clean=answer.trim();
+      if(/auto/i.test(clean)){
+        const v=genRef();
+        state.ref=v;
+        el.ref.value=v;
+        pushMessage("assistant",`Référence générée : ${v}.`);
+        return true;
+      }
+      const value=clean.replace(/–/g,"-");
+      if(!validateRef(value)){
+        pushMessage("assistant","Merci d’utiliser le format Z-ZZZZ (ex. 3-7420) ou « auto »." );
+        return false;
+      }
+      state.ref=value;
+      el.ref.value=value;
+      pushMessage("assistant",`Référence ${value} enregistrée.`);
+      return true;
+    }
+  }
+];
+
+function startConversation(){
+  convo.active=true;
+  convo.stepIndex=0;
+  state.type="";
+  state.moteur="";
+  state.client="";
+  state.id="";
+  state.ref="";
+  el.client.value="";
+  el.id.value="";
+  el.ref.value="";
+  refresh();
+  el.chat.innerHTML="";
+  pushMessage("assistant","Bonjour ! Dis-moi, je vais t’aider à créer le contrat en quelques questions.");
+  askStep();
+}
+
+function askStep(){
+  if(convo.stepIndex>=steps.length){
+    refresh();
+    pushMessage("assistant","Super, tout est complété. Tu peux encore ajuster les champs ou cliquer sur « Créer le contrat ».");
+    convo.active=false;
+    el.chatInput.placeholder="Conversation terminée. Tape une réponse pour relancer.";
+    return;
+  }
+  const current=steps[convo.stepIndex];
+  pushMessage("assistant",current.question);
+  el.chatInput.placeholder=current.question;
+}
+
+function handleConversation(answer){
+  if(!convo.active){
+    startConversation();
+  }
+  const current=steps[convo.stepIndex];
+  pushMessage("user",answer);
+  if(current.handle(answer)){ // si valide, passer à l’étape suivante
+    convo.stepIndex+=1;
+    refresh();
+    askStep();
+  }else{
+    setTimeout(()=>askStep(),200);
+  }
+}
 /* ---------------- Wire events ---------------- */
 el.fab.onclick=()=>el.panel.classList.toggle("hidden");
 el.close.onclick=()=>el.panel.classList.add("hidden");
+
+el.chatStart.onclick=()=>startConversation();
+el.chatSend.onclick=()=>{
+  const answer=el.chatInput.value.trim();
+  if(!answer){
+    if(!convo.active) startConversation();
+    return;
+  }
+  el.chatInput.value="";
+  handleConversation(answer);
+};
+el.chatInput.addEventListener("keydown",ev=>{
+  if(ev.key==="Enter"){
+    ev.preventDefault();
+    el.chatSend.click();
+  }
+});
 
 el.btnTemplate.onclick=()=>{
   el.nl.value = "Je souhaite créer un contrat de type PBH sur le moteur LEAP-1A avec l’identifiant Contratèque CFM-2025-ABCDE pour le client Air France, référence du contrat 3-7420.";
@@ -256,6 +453,7 @@ el.btnCreate.onclick=()=>{
 };
 
 refresh(); // first render
+startConversation();
 </script>
 </body>
 </html>
