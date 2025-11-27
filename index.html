@@ -1,459 +1,287 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Assistant IA Contrat – SCORE</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SCORE – Assistant contrat (pas à pas)</title>
 <style>
-  :root{
-    --teal:#00a6a6; --ink:#0f172a; --bg:#f7fafc; --card:#fff; --muted:#64748b; --ok:#16a34a; --err:#dc2626;
-  }
-  body{margin:0;font-family:Inter,Roboto,system-ui,-apple-system,Segoe UI,Arial;}
-  /* Bouton flottant pour ouvrir/fermer */
+  :root{--teal:#00a6a6;--ink:#0f172a;--muted:#64748b;--bg:#f7fafc;--card:#fff;--ok:#16a34a;--err:#dc2626}
+  body{margin:0;font-family:Inter,Roboto,system-ui,Arial}
+  /* FAB */
   .fab{position:fixed;right:16px;bottom:16px;background:var(--teal);color:#fff;border:none;border-radius:999px;padding:12px 16px;box-shadow:0 8px 20px rgba(0,0,0,.2);cursor:pointer;z-index:9998}
-  /* Panneau latéral */
-  #assistant{
-    position:fixed;inset:0 0 0 auto;width:400px;max-width:92vw;background:var(--bg);
-    border-left:3px solid var(--teal);box-shadow:-8px 0 24px rgba(0,0,0,.15);
-    display:flex;flex-direction:column;z-index:9999;transform:translateX(0);transition:.25s ease;
-  }
-  #assistant.hidden{transform:translateX(110%)}
+  /* Panel */
+  #panel{position:fixed;top:0;right:0;height:100vh;width:420px;max-width:96vw;background:var(--bg);border-left:3px solid var(--teal);
+         box-shadow:-10px 0 24px rgba(0,0,0,.18);display:flex;flex-direction:column;z-index:9999;transform:translateX(110%);transition:.25s}
+  #panel.open{transform:translateX(0)}
   header{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--teal);color:#fff}
   header h3{margin:0;font-weight:600}
-  header .close{margin-left:auto;background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px}
-  main{padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto}
-  .hint{color:var(--muted);font-size:12px}
-  textarea,input{width:100%;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:14px;background:#fff}
-  .row{display:grid;grid-template-columns:1fr;gap:8px}
-  .label{font-size:12px;color:#334155;font-weight:600;display:flex;align-items:center;gap:6px}
-  .chatcard{display:flex;flex-direction:column;gap:10px}
-  .chatbox{border:1px solid #e2e8f0;border-radius:12px;background:#fff;min-height:160px;max-height:220px;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-  .msg{display:flex;gap:8px}
-  .msg.assistant{justify-content:flex-start}
-  .msg.user{justify-content:flex-end}
-  .bubble{max-width:80%;padding:8px 10px;border-radius:12px;font-size:13px;line-height:1.4;box-shadow:0 3px 8px rgba(15,23,42,0.08)}
-  .msg.assistant .bubble{background:rgba(0,166,166,0.12);color:var(--ink);border-top-left-radius:4px}
-  .msg.user .bubble{background:var(--teal);color:#fff;border-top-right-radius:4px}
-  .chat-actions{display:flex;gap:8px;flex-wrap:wrap}
-  .chat-actions .btn{flex:1 1 auto}
-  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  header .close{margin-left:auto;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer}
+  .progress{height:4px;background:#ffffff33;border-radius:4px;overflow:hidden}
+  .bar{height:4px;background:#fff;width:0%}
+  /* Chat */
+  #chat{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:85%;padding:10px 12px;border-radius:14px;line-height:1.35;font-size:14px;white-space:pre-wrap}
+  .a{align-self:flex-start;background:#fff;border:1px solid #e5e7eb}
+  .u{align-self:flex-end;background:#dcfce7;border:1px solid #bbf7d0}
+  .meta{font-size:11px;color:var(--muted);margin-top:-6px;padding:0 4px}
+  /* Composer */
+  #composer{padding:10px;border-top:1px solid #e5e7eb;background:#fff;display:grid;grid-template-columns:1fr auto;gap:8px}
+  #input{border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:14px}
+  .send{background:var(--teal);color:#fff;border:none;border-radius:10px;padding:10px 12px;cursor:pointer}
+  /* Quick replies */
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}
-  .chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
-  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .btn{background:var(--teal);color:#fff;border:none;border-radius:10px;padding:10px 12px;cursor:pointer}
-  .btn.ghost{background:#fff;color:var(--teal);border:1px solid var(--teal)}
-  .small{font-size:12px}
-  .valid{font-size:12px;color:var(--ok)}
-  .invalid{font-size:12px;color:var(--err)}
-  .card{background:var(--card);border:1px solid #e5e7eb;border-radius:12px;padding:12px}
-  pre{margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.4}
+  .chip.ok{background:#ecfdf5;border-color:#a7f3d0}
+  /* Summary card */
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:6px;font-size:13px}
+  .k{color:#334155}
+  .status-ok{color:var(--ok);font-size:12px}
+  .status-err{color:var(--err);font-size:12px}
 </style>
 </head>
 <body>
 
-<button class="fab" id="toggleFab">🤖 Assistant contrat</button>
+<button class="fab" id="fab">🤖 Assistant</button>
 
-<aside id="assistant" class="hidden" aria-label="Assistant IA Contrat">
+<aside id="panel" aria-label="Assistant contrat">
   <header>
     <span>🤖</span><h3>Assistant contrat</h3>
-    <button class="close" id="closeBtn" title="Fermer">✕</button>
+    <button class="close" id="close">✕</button>
   </header>
+  <div class="progress"><div class="bar" id="bar"></div></div>
 
-  <main>
-    <!-- 0) Conversation guidée -->
-    <section class="card chatcard">
-      <div class="label">💬 Conversation guidée</div>
-      <div id="chat" class="chatbox" aria-live="polite"></div>
-      <div class="chat-actions">
-        <input id="chatInput" placeholder="Tape ta réponse et appuie sur Entrée" autocomplete="off"/>
-        <button class="btn" id="chatSend">Envoyer</button>
-        <button class="btn ghost" id="chatStart">🔁 Recommencer</button>
-      </div>
-      <div class="hint">Utilise la conversation pour te laisser guider pas à pas. Tu peux répondre « auto » pour générer automatiquement les identifiants.</div>
-    </section>
+  <div id="chat" role="log" aria-live="polite"></div>
 
-    <!-- 1) Commande naturelle + parsing -->
-    <section class="row">
-      <div class="label">🗣️ Commande en langage naturel</div>
-      <textarea id="nl" rows="3" placeholder="Ex. Je souhaite créer un contrat de type PBH sur le moteur LEAP-1A avec l’identifiant Contratèque CFM-2025-ABCDE pour le client Air France, référence du contrat 3-7420."></textarea>
-      <div class="grid-2">
-        <button class="btn" id="btnParse">Analyser & pré-remplir</button>
-        <button class="btn ghost" id="btnTemplate">🎲 Remplir un exemple</button>
-      </div>
-      <div class="hint">Astuce : colle une phrase, clique « Analyser », puis ajuste via les chips ci-dessous.</div>
-    </section>
-
-    <!-- 2) Sélections guidées (mode clic) -->
-    <section class="row">
-      <div class="label">🧭 Type de contrat</div>
-      <div id="chipsType" class="chips"></div>
-    </section>
-
-    <section class="row">
-      <div class="label">🛠️ Moteur</div>
-      <div id="chipsMoteur" class="chips"></div>
-    </section>
-
-    <section class="row">
-      <div class="label">👤 Client</div>
-      <input id="client" placeholder="Ex. Air France"/>
-      <div class="chips" id="chipsClient"></div>
-    </section>
-
-    <!-- 3) Identifiants + validation live -->
-    <section class="grid-2">
-      <div>
-        <div class="label">📇 Identifiant Contratèque</div>
-        <input id="idContrateque" placeholder="CFM-2025-ABCDE"/>
-        <div id="idStatus" class="small"></div>
-      </div>
-      <div>
-        <div class="label">🔖 Référence contrat</div>
-        <input id="refContrat" placeholder="3-7420"/>
-        <div id="refStatus" class="small"></div>
-      </div>
-    </section>
-    <div class="grid-2">
-      <button class="btn ghost" id="btnGenId">Auto-générer CFM-2025-xxxxx</button>
-      <button class="btn ghost" id="btnGenRef">Auto-générer Z-ZZZZ</button>
-    </div>
-
-    <!-- 4) Aperçu & export -->
-    <section class="card">
-      <div class="label">👁️‍🗨️ Aperçu</div>
-      <pre id="preview">—</pre>
-      <div class="grid-2" style="margin-top:8px">
-        <button class="btn" id="btnCreate">✅ Créer le contrat</button>
-        <button class="btn ghost" id="btnCopyJson">📋 Copier JSON</button>
-      </div>
-    </section>
-  </main>
+  <div id="composer">
+    <input id="input" placeholder="Écris ici… (Entrée = envoyer)"/>
+    <button class="send" id="send">Envoyer</button>
+  </div>
 </aside>
 
 <script>
-/* ---------------- Config suggestions ---------------- */
-const TYPES = ["PBH","Time & Material","Full Support","On Condition","Exchange","Inspection"];
-const MOTEURS = ["LEAP-1A","LEAP-1B","CFM56-5B","CFM56-7B","CFM56-3","CF6-80E1"];
-const CLIENTS = ["Air France","Transavia France","easyJet","Ryanair","KLM","Lufthansa","Safran Test Fleet"];
-/* ---------------- Helpers UI ---------------- */
-const qs = s=>document.querySelector(s);
-const el = {
-  panel: qs("#assistant"),
-  fab: qs("#toggleFab"),
-  close: qs("#closeBtn"),
-  chat: qs("#chat"),
-  chatInput: qs("#chatInput"),
-  chatSend: qs("#chatSend"),
-  chatStart: qs("#chatStart"),
-  nl: qs("#nl"),
-  chipsType: qs("#chipsType"),
-  chipsMoteur: qs("#chipsMoteur"),
-  chipsClient: qs("#chipsClient"),
-  client: qs("#client"),
-  id: qs("#idContrateque"),
-  ref: qs("#refContrat"),
-  idStatus: qs("#idStatus"),
-  refStatus: qs("#refStatus"),
-  preview: qs("#preview"),
-  btnParse: qs("#btnParse"),
-  btnTemplate: qs("#btnTemplate"),
-  btnGenId: qs("#btnGenId"),
-  btnGenRef: qs("#btnGenRef"),
-  btnCreate: qs("#btnCreate"),
-  btnCopyJson: qs("#btnCopyJson"),
-};
-/* ---------------- State ---------------- */
-const state = { type:"", moteur:"", client:"", id:"", ref:"" };
-const convo = { active:false, stepIndex:-1 };
-/* ---------------- Chips builders ---------------- */
-function buildChips(container, values, onPick){
-  container.innerHTML="";
-  values.forEach(v=>{
-    const c=document.createElement("button");
-    c.type="button"; c.className="chip"; c.textContent=v;
-    c.onclick=()=>{ onPick(v); refresh(); };
-    container.appendChild(c);
+/* ===== Config ===== */
+const TYPES=["PBH","Time & Material","Full Support","On Condition","Exchange","Inspection"];
+const ENGINES=["LEAP-1A","LEAP-1B","CFM56-5B","CFM56-7B","CFM56-3","CF6-80E1"];
+const CLIENTS=["Air France","Transavia France","easyJet","Ryanair","KLM","Lufthansa","Safran Test Fleet"];
+
+/* ===== Utilities ===== */
+const $=s=>document.querySelector(s);
+const chat=$("#chat"), input=$("#input"), bar=$("#bar");
+const now=()=>new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+const scrollBottom=()=>chat.scrollTop=chat.scrollHeight;
+
+function say(text,{role="a"}={}){ // assistant bubble
+  const m=document.createElement("div"); m.className=`msg ${role==="a"?"a":"u"}`; m.textContent=text; chat.appendChild(m);
+  const meta=document.createElement("div"); meta.className="meta"; meta.textContent=now(); chat.appendChild(meta);
+  scrollBottom(); return m;
+}
+function chips(options){ // quick replies container
+  const wrap=document.createElement("div"); wrap.className="chips";
+  options.forEach(o=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=o.label;
+    b.onclick=()=>o.onClick?.(o.value ?? o.label, b);
+    wrap.appendChild(b);
   });
+  chat.appendChild(wrap); scrollBottom(); return wrap;
 }
-buildChips(el.chipsType, TYPES, v=>state.type=v);
-buildChips(el.chipsMoteur, MOTEURS, v=>state.moteur=v);
-buildChips(el.chipsClient, CLIENTS, v=>{ state.client=v; el.client.value=v; });
+function user(text){ say(text,{role:"u"}); }
+function percent(n){ bar.style.width=`${n}%`; }
 
-/* ---------------- Parsing NL ---------------- */
-function parseNL(text){
-  const t=text;
-  const pickFromList=(list)=>list.find(x=>new RegExp("\\b"+x.replace(/[-/]/g,"[-/]") +"\\b","i").test(t))||"";
-  const type = pickFromList(TYPES);
-  const moteur = pickFromList(MOTEURS);
-  const clientMatch = CLIENTS.find(c=>new RegExp("\\b"+c.replace(" ","\\s")+"\\b","i").test(t));
-  const client = clientMatch || (t.match(/client\s+([A-Za-z][\w\s\-']{1,40})/i)?.[1]?.trim() || "");
-  const id = (t.match(/CFM[-–]\s?2025[-–]\s?[A-Z0-9]{5}/i)?.[0] || "").replace(/\s/g,"").replace(/–/g,"-").toUpperCase();
-  const ref = (t.match(/\b([0-9])[-–]([0-9]{4})\b/)?.[0] || "").replace(/–/g,"-");
-  return {type,moteur,client,id,ref};
-}
-/* ---------------- Generators ---------------- */
-function genCFM(){ return "CFM-2025-"+Array.from({length:5},()=> "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random()*32)]).join(""); }
-function genRef(){
-  const z = Math.floor(Math.random()*9)+1; // 1..9
-  const n = String(Math.floor(Math.random()*10000)).padStart(4,"0");
-  return `${z}-${n}`;
-}
-function matchList(answer,list){
-  if(!answer) return "";
-  const clean = answer.trim();
-  const found = list.find(item=>new RegExp(`(^|\b)${item.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s/g,"\\s+")}(\b|$)`,`i`).test(clean));
-  return found || "";
-}
-/* ---------------- Validators ---------------- */
-function validateId(v){ return /^CFM-2025-[A-Z0-9]{5}$/.test(v); }
-function validateRef(v){ return /^[1-9]-\d{4}$/.test(v); }
-/* ---------------- Render ---------------- */
-function refresh(){
-  // sync inputs -> state when manual typing
-  state.client = el.client.value || state.client;
-  state.id = el.id.value || state.id;
-  state.ref = el.ref.value || state.ref;
+/* ===== Simple parsers & validators ===== */
+const parseFromFree=(t)=>{
+  const pick=(list)=>list.find(x=>new RegExp("\\b"+x.replace(/[-/]/g,"[-/]")+"\\b","i").test(t))||"";
+  const type=pick(TYPES);
+  const engine=pick(ENGINES);
+  const client=CLIENTS.find(c=>new RegExp("\\b"+c.replace(" ","\\s")+"\\b","i").test(t)) || (t.match(/client\s+([A-Za-z][\w\s\-']{1,40})/i)?.[1]?.trim()||"");
+  const id=(t.match(/CFM[-–]?\s?2025[-–]?\s?[A-Z0-9]{5}/i)?.[0]||"").replace(/\s/g,"").replace(/–/g,"-").toUpperCase();
+  const ref=(t.match(/\b([1-9])[-–](\d{4})\b/)?.[0]||"").replace(/–/g,"-");
+  return {type,engine,client,id,ref};
+};
+const genId=()=> "CFM-2025-"+Array.from({length:5},()=> "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random()*32)]).join("");
+const genRef=()=> `${Math.floor(Math.random()*9)+1}-${String(Math.floor(Math.random()*10000)).padStart(4,"0")}`;
+const isId=v=>/^CFM-2025-[A-Z0-9]{5}$/.test(v||"");
+const isRef=v=>/^[1-9]-\d{4}$/.test(v||"");
 
-  // highlight active chips
-  document.querySelectorAll("#chipsType .chip").forEach(ch=>ch.classList.toggle("active", ch.textContent===state.type));
-  document.querySelectorAll("#chipsMoteur .chip").forEach(ch=>ch.classList.toggle("active", ch.textContent===state.moteur));
-  document.querySelectorAll("#chipsClient .chip").forEach(ch=>ch.classList.toggle("active", ch.textContent===state.client));
-
-  // live validation
-  const idOk = validateId(state.id);
-  const refOk = validateRef(state.ref);
-  el.idStatus.textContent = state.id ? (idOk?"✓ Format OK (CFM-2025-ABCDE)":"✗ Format attendu : CFM-2025-XXXXX") : "";
-  el.idStatus.className = state.id ? (idOk?"valid":"invalid") : "small";
-  el.refStatus.textContent = state.ref ? (refOk?"✓ Format OK (Z-ZZZZ)":"✗ Format attendu : Z-ZZZZ (Z=chiffre 1–9)") : "";
-  el.refStatus.className = state.ref ? (refOk?"valid":"invalid") : "small";
-
-  // preview
-  const payload = {
-    date: new Date().toISOString().slice(0,10),
-    client: state.client || null,
-    contractType: state.type || null,
-    engine: state.moteur || null,
-    contratequeId: state.id || null,
-    contractRef: state.ref || null,
-    source: "assistant-ia-sidepanel",
-  };
-  el.preview.textContent = JSON.stringify(payload,null,2);
-}
-function pushMessage(sender,text){
-  const wrapper=document.createElement("div");
-  wrapper.className=`msg ${sender}`;
-  const bubble=document.createElement("div");
-  bubble.className="bubble";
-  bubble.textContent=text;
-  wrapper.appendChild(bubble);
-  el.chat.appendChild(wrapper);
-  el.chat.scrollTop=el.chat.scrollHeight;
-}
-
+/* ===== Conversation state machine ===== */
+const state={ type:"", engine:"", client:"", id:"", ref:"" };
 const steps=[
-  {
-    key:"type",
-    question:"Quel est le type de contrat souhaité ? (PBH, Time & Material, ...)",
-    handle(answer){
-      const pick=matchList(answer,TYPES);
-      if(!pick){
-        pushMessage("assistant","Je n’ai pas reconnu le type. Choisis parmi : "+TYPES.join(", ")+".");
-        return false;
-      }
-      state.type=pick;
-      pushMessage("assistant",`Parfait, on part sur ${pick}.`);
-      return true;
-    }
-  },
-  {
-    key:"moteur",
-    question:"Quel moteur est concerné ? (LEAP-1A, CFM56-7B, ...)",
-    handle(answer){
-      const pick=matchList(answer,MOTEURS);
-      if(!pick){
-        pushMessage("assistant","Je n’ai pas reconnu le moteur. Options : "+MOTEURS.join(", ")+".");
-        return false;
-      }
-      state.moteur=pick;
-      pushMessage("assistant",`Compris, moteur ${pick}.`);
-      return true;
-    }
-  },
-  {
-    key:"client",
-    question:"Quel est le client ?",
-    handle(answer){
-      const pick=matchList(answer,CLIENTS) || answer.trim();
-      if(!pick){
-        pushMessage("assistant","Peux-tu préciser le client ?");
-        return false;
-      }
-      state.client=pick;
-      el.client.value=pick;
-      pushMessage("assistant",`Merci ! Client enregistré : ${pick}.`);
-      return true;
-    }
-  },
-  {
-    key:"id",
-    question:"Indique l’identifiant Contratèque (format CFM-2025-XXXXX) ou réponds « auto ».",
-    handle(answer){
-      const clean=answer.trim();
-      if(/auto/i.test(clean)){
-        const v=genCFM();
-        state.id=v;
-        el.id.value=v;
-        pushMessage("assistant",`C’est fait, j’ai généré ${v}.`);
-        return true;
-      }
-      const value=clean.toUpperCase().replace(/–/g,"-");
-      if(!validateId(value)){
-        pushMessage("assistant","Le format attendu est CFM-2025-XXXXX. Tu peux aussi écrire « auto »." );
-        return false;
-      }
-      state.id=value;
-      el.id.value=value;
-      pushMessage("assistant",`Identifiant ${value} noté.`);
-      return true;
-    }
-  },
-  {
-    key:"ref",
-    question:"Quelle est la référence contrat (format Z-ZZZZ) ou réponds « auto » ?",
-    handle(answer){
-      const clean=answer.trim();
-      if(/auto/i.test(clean)){
-        const v=genRef();
-        state.ref=v;
-        el.ref.value=v;
-        pushMessage("assistant",`Référence générée : ${v}.`);
-        return true;
-      }
-      const value=clean.replace(/–/g,"-");
-      if(!validateRef(value)){
-        pushMessage("assistant","Merci d’utiliser le format Z-ZZZZ (ex. 3-7420) ou « auto »." );
-        return false;
-      }
-      state.ref=value;
-      el.ref.value=value;
-      pushMessage("assistant",`Référence ${value} enregistrée.`);
-      return true;
-    }
-  }
+  { key:"intro", run: stepIntro },
+  { key:"type",  run: stepType },
+  { key:"engine",run: stepEngine },
+  { key:"client",run: stepClient },
+  { key:"id",    run: stepId },
+  { key:"ref",   run: stepRef },
+  { key:"review",run: stepReview },
+  { key:"confirm",run: stepConfirm }
 ];
+let i=0, awaiting=null; // awaiting = {field, validator, onValue}
 
-function startConversation(){
-  convo.active=true;
-  convo.stepIndex=0;
-  state.type="";
-  state.moteur="";
-  state.client="";
-  state.id="";
-  state.ref="";
-  el.client.value="";
-  el.id.value="";
-  el.ref.value="";
-  refresh();
-  el.chat.innerHTML="";
-  pushMessage("assistant","Bonjour ! Dis-moi, je vais t’aider à créer le contrat en quelques questions.");
-  askStep();
+/* === Steps === */
+function stepIntro(){
+  percent(5);
+  say("Bienvenue ! On crée un contrat en 6 petites étapes. Tu peux aussi coller une phrase complète (ex: “type PBH sur LEAP-1A…”) puis j’en déduis tout. 🚀");
+  chips([
+    {label:"Coller une phrase", onClick:()=>{input.focus();}},
+    {label:"Commencer directement ▶️", onClick:next}
+  ]);
 }
 
-function askStep(){
-  if(convo.stepIndex>=steps.length){
-    refresh();
-    pushMessage("assistant","Super, tout est complété. Tu peux encore ajuster les champs ou cliquer sur « Créer le contrat ».");
-    convo.active=false;
-    el.chatInput.placeholder="Conversation terminée. Tape une réponse pour relancer.";
+function stepType(){
+  percent(20);
+  const m=say("Quel **type de contrat** ? (clic ou écris)");
+  const c=chips([...TYPES.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('type',val); next();}})),
+                 {label:"Autre…", onClick:()=>askFree('type', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"type");
+}
+
+function stepEngine(){
+  percent(35);
+  const m=say("Sur quel **moteur** ?");
+  const c=chips([...ENGINES.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('engine',val); next();}})),
+                 {label:"Autre…", onClick:()=>askFree('engine', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"engine");
+}
+
+function stepClient(){
+  percent(50);
+  const m=say("Pour quel **client** ?");
+  const c=chips([...CLIENTS.map(v=>({label:v, value:v, onClick:(val,btn)=>{pickChip(btn); setField('client',val); next();}})),
+                 {label:"Saisir le nom…", onClick:()=>askFree('client', v=>v.length>=2)}]);
+  prefillFromFreeText(m,c,"client");
+}
+
+function stepId(){
+  percent(65);
+  const msg=say("Donne l’**identifiant Contratèque** (format `CFM-2025-ABCDE`).");
+  chips([
+    {label:"Auto-générer 🔁", onClick:()=>{setField('id',genId()); say("Proposition : "+state.id); next();}},
+    {label:"Coller depuis presse-papier", onClick:()=>askFree('id', isId)}
+  ]);
+  prefillFromFreeText(msg,null,"id", isId);
+}
+
+function stepRef(){
+  percent(80);
+  const msg=say("Indique la **référence contrat** (format `Z-ZZZZ`, Z=chiffre 1–9).");
+  chips([
+    {label:"Générer 🔁", onClick:()=>{setField('ref',genRef()); say("Proposition : "+state.ref); next();}},
+    {label:"Saisir manuellement", onClick:()=>askFree('ref', isRef)}
+  ]);
+  prefillFromFreeText(msg,null,"ref", isRef);
+}
+
+function stepReview(){
+  percent(92);
+  say("Voici le récapitulatif. Tu peux **éditer** une ligne en cliquant dessus :");
+  const card=document.createElement("div"); card.className="card";
+  const kv=document.createElement("div"); kv.className="kv";
+  const rows=[
+    ["Type", "type"],["Moteur","engine"],["Client","client"],
+    ["Contratèque","id"],["Référence","ref"]
+  ];
+  rows.forEach(([k,f])=>{
+    const K=document.createElement("div"); K.className="k"; K.textContent=k;
+    const V=document.createElement("div"); V.textContent=state[f]||"—";
+    V.style.cursor="pointer"; V.title="Modifier";
+    V.onclick=()=>{ i=steps.findIndex(s=>s.key=== (f==="type"?"type": f==="engine"?"engine": f==="client"?"client": f==="id"?"id":"ref")); next(true);}
+    kv.appendChild(K); kv.appendChild(V);
+  });
+  card.appendChild(kv); chat.appendChild(card); scrollBottom();
+
+  const ok=isId(state.id)&&isRef(state.ref)&&state.type&&state.engine&&state.client;
+  say(ok?"Tout est valide ✅":"Quelques champs sont à corriger ❗", {role:"a"})
+    .className += ok? " status-ok":" status-err";
+
+  chips([
+    {label:"Valider ✅", onClick:()=>{ if(ok) next(); else say("Corrige les champs signalés puis revalide."); }},
+    {label:"Recommencer ↺", onClick:reset}
+  ]);
+}
+
+function stepConfirm(){
+  percent(100);
+  const payload={
+    date:new Date().toISOString().slice(0,10),
+    client:state.client, contractType:state.type, engine:state.engine,
+    contratequeId:state.id, contractRef:state.ref, source:"assistant-ia-stepper"
+  };
+  say("Dernière étape : **créer le contrat ?**");
+  const p=document.createElement("pre"); p.textContent=JSON.stringify(payload,null,2); p.className="card"; chat.appendChild(p); scrollBottom();
+  chips([
+    {label:"Créer maintenant ✅", onClick:()=>{ console.log("CREATE_CONTRACT",payload); say("Contrat créé (simulation). ✅"); }},
+    {label:"Copier le JSON 📋", onClick:async()=>{ await navigator.clipboard.writeText(JSON.stringify(payload,null,2)); say("Copié !"); }},
+    {label:"Terminer", onClick:()=>say("À bientôt 👋")}
+  ]);
+}
+
+/* === Helpers for steps === */
+function pickChip(btn){ document.querySelectorAll('.chip').forEach(b=>b.classList.remove('ok')); btn.classList.add('ok'); }
+function setField(f,v){ state[f]=v; }
+function askFree(field, validator=(v)=>!!v){
+  awaiting={field, validator, onValue:(v)=>{ setField(field,v); next(); }};
+  say(`Ok, tape la valeur pour **${label(field)}** :`);
+  input.focus();
+}
+function label(f){
+  return {type:"type de contrat", engine:"moteur", client:"client", id:"identifiant Contratèque", ref:"référence"}[f]||f;
+}
+function prefillFromFreeText(anchor,chipWrap,field,validator){
+  // If user pasted a big sentence, try to pre-extract
+  const parsed=parseFromFree(input.value||"");
+  if(parsed[field] && (!validator || validator(parsed[field]))){
+    setField(field, parsed[field]);
+    const msg=`J’ai détecté **${label(field)}** = ${parsed[field]}.`;
+    say(msg);
+  }
+  // Autofill chips selection state
+  if(chipWrap){
+    [...chipWrap.children].forEach(b=>{
+      if(b.textContent===state[field]) b.classList.add('ok');
+    });
+  }
+}
+
+/* === Engine === */
+function next(replayCurrent=false){
+  if(!replayCurrent) i=Math.min(i+1, steps.length-1);
+  chat.appendChild(document.createElement("hr")).style.border="none"; // visual spacer
+  steps[i].run();
+}
+function reset(){
+  Object.keys(state).forEach(k=>state[k]="");
+  i=0; chat.innerHTML=""; percent(0); steps[0].run();
+}
+
+/* === IO === */
+$("#fab").onclick=()=>{$("#panel").classList.add("open"); if(chat.childElementCount===0) steps[0].run();}
+$("#close").onclick=()=>$("#panel").classList.remove("open");
+$("#send").onclick=sendText;
+input.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); sendText(); }});
+
+function sendText(){
+  const txt=input.value.trim(); if(!txt) return;
+  user(txt); input.value="";
+  // If we are awaiting a specific value
+  if(awaiting){
+    const {field,validator,onValue}=awaiting;
+    if(!validator(txt)){ say(`Format invalide pour **${label(field)}**. Réessaie ✍️`); return; }
+    awaiting=null; onValue(txt);
     return;
   }
-  const current=steps[convo.stepIndex];
-  pushMessage("assistant",current.question);
-  el.chatInput.placeholder=current.question;
-}
-
-function handleConversation(answer){
-  if(!convo.active){
-    startConversation();
-  }
-  const current=steps[convo.stepIndex];
-  pushMessage("user",answer);
-  if(current.handle(answer)){ // si valide, passer à l’étape suivante
-    convo.stepIndex+=1;
-    refresh();
-    askStep();
+  // Otherwise treat as free form parsing & prefill
+  const parsed=parseFromFree(txt);
+  let filled=[];
+  Object.entries(parsed).forEach(([k,v])=>{ if(v && (!state[k] || (k==="id"&&isId(v)) || (k==="ref"&&isRef(v)))){ state[k]=v; filled.push(k); }});
+  if(filled.length){
+    say("Parfait, j’ai pré-rempli : "+filled.map(label).join(", ")+" ✅");
   }else{
-    setTimeout(()=>askStep(),200);
+    say("Message noté. Tu peux continuer avec les boutons ci-dessous 😊");
   }
 }
-/* ---------------- Wire events ---------------- */
-el.fab.onclick=()=>el.panel.classList.toggle("hidden");
-el.close.onclick=()=>el.panel.classList.add("hidden");
 
-el.chatStart.onclick=()=>startConversation();
-el.chatSend.onclick=()=>{
-  const answer=el.chatInput.value.trim();
-  if(!answer){
-    if(!convo.active) startConversation();
-    return;
-  }
-  el.chatInput.value="";
-  handleConversation(answer);
-};
-el.chatInput.addEventListener("keydown",ev=>{
-  if(ev.key==="Enter"){
-    ev.preventDefault();
-    el.chatSend.click();
-  }
-});
-
-el.btnTemplate.onclick=()=>{
-  el.nl.value = "Je souhaite créer un contrat de type PBH sur le moteur LEAP-1A avec l’identifiant Contratèque CFM-2025-ABCDE pour le client Air France, référence du contrat 3-7420.";
-};
-el.btnParse.onclick=()=>{
-  const r = parseNL(el.nl.value);
-  if(r.type) state.type=r.type;
-  if(r.moteur) state.moteur=r.moteur;
-  if(r.client) { state.client=r.client; el.client.value=r.client; }
-  if(r.id) { state.id=r.id; el.id.value=r.id; }
-  if(r.ref) { state.ref=r.ref; el.ref.value=r.ref; }
-  refresh();
-};
-
-el.client.oninput=()=>{ state.client=el.client.value; refresh(); };
-el.id.oninput=()=>{ state.id=el.id.value.toUpperCase().replace(/–/g,"-"); refresh(); };
-el.ref.oninput=()=>{ state.ref=el.ref.value.replace(/–/g,"-"); refresh(); };
-
-el.btnGenId.onclick=()=>{ const v=genCFM(); state.id=v; el.id.value=v; refresh(); };
-el.btnGenRef.onclick=()=>{ const v=genRef(); state.ref=v; el.ref.value=v; refresh(); };
-
-el.btnCopyJson.onclick=async()=>{
-  try{
-    await navigator.clipboard.writeText(el.preview.textContent);
-    el.btnCopyJson.textContent="✅ Copié !";
-    setTimeout(()=>el.btnCopyJson.textContent="📋 Copier JSON",1200);
-  }catch(e){ alert("Copie impossible : "+e.message); }
-};
-
-el.btnCreate.onclick=()=>{
-  const idOk=validateId(state.id), refOk=validateRef(state.ref);
-  const missing = [];
-  if(!state.type) missing.push("type de contrat");
-  if(!state.moteur) missing.push("moteur");
-  if(!state.client) missing.push("client");
-  if(!idOk) missing.push("identifiant Contratèque (CFM-2025-XXXXX)");
-  if(!refOk) missing.push("référence (Z-ZZZZ)");
-  if(missing.length){
-    alert("Veuillez compléter/valider :\n• " + missing.join("\n• "));
-    return;
-  }
-  // ➜ Ici, appelle ton backend / Firestore / API SCORE
-  console.log("CREATE_CONTRACT", JSON.parse(el.preview.textContent));
-  alert("✅ Contrat créé (simulation). Voir console.");
-};
-
-refresh(); // first render
-startConversation();
+/* Boot */
+reset();
 </script>
 </body>
 </html>
